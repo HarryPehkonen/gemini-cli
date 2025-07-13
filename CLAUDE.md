@@ -79,6 +79,37 @@ The CLI supports multiple authentication methods:
 ### Sandbox Configuration
 Sandbox mode supports Docker and Podman for isolated execution. Configure via `GEMINI_SANDBOX` environment variable.
 
+## Local Installation
+
+To install and use this forked version locally:
+
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Build the project**:
+   ```bash
+   npm run build
+   ```
+
+3. **Create the bundle**:
+   ```bash
+   npm run bundle
+   ```
+
+4. **Link globally**:
+   ```bash
+   npm link
+   ```
+
+After linking, you can use the `gemini` command from anywhere on your system. The command will point to your local development version.
+
+To unlink later if needed:
+```bash
+npm unlink -g @google/gemini-cli
+```
+
 ## Important Files and Directories
 
 ### Configuration
