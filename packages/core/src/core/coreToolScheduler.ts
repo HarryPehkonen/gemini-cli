@@ -19,6 +19,7 @@ import {
   ToolCallEvent,
   ToolConfirmationPayload,
 } from '../index.js';
+import { ToolExecutionValidator } from '../utils/toolExecutionValidator.js';
 import { Part, PartListUnion } from '@google/genai';
 import { getResponseTextFromParts } from '../utils/generateContentResponseUtilities.js';
 import {
@@ -232,6 +233,7 @@ export class CoreToolScheduler {
   private approvalMode: ApprovalMode;
   private getPreferredEditor: () => EditorType | undefined;
   private config: Config;
+  private executionValidator: ToolExecutionValidator;
 
   constructor(options: CoreToolSchedulerOptions) {
     this.config = options.config;
@@ -241,6 +243,7 @@ export class CoreToolScheduler {
     this.onToolCallsUpdate = options.onToolCallsUpdate;
     this.approvalMode = options.approvalMode ?? ApprovalMode.DEFAULT;
     this.getPreferredEditor = options.getPreferredEditor;
+    this.executionValidator = new ToolExecutionValidator();
   }
 
   private setStatusInternal(
@@ -445,6 +448,24 @@ export class CoreToolScheduler {
 
       const { request: reqInfo, tool: toolInstance } = toolCall;
       try {
+        // Validate tool execution to prevent retry loops
+        const validationResult = this.executionValidator.validateBeforeExecution(
+          reqInfo.name,
+          reqInfo.args
+        );
+        
+        if (!validationResult.allowed) {
+          this.setStatusInternal(
+            reqInfo.callId,
+            'error',
+            createErrorResponse(
+              reqInfo,
+              new Error(`Tool execution blocked: ${validationResult.reason}\n\nRequired actions:\n${validationResult.requiredActions?.join('\n- ') || 'None specified'}`)
+            )
+          );
+          continue;
+        }
+
         if (this.approvalMode === ApprovalMode.YOLO) {
           this.setStatusInternal(reqInfo.callId, 'scheduled');
         } else {
@@ -692,9 +713,30 @@ export class CoreToolScheduler {
               error: undefined,
             };
 
+            // Record success with validator
+            if (toolResult.success !== false) {
+              this.executionValidator.recordSuccess(scheduledCall.request.name, scheduledCall.request.args);
+            } else if (toolResult.errorInfo) {
+              this.executionValidator.recordFailure(scheduledCall.request.name, scheduledCall.request.args, toolResult.errorInfo);
+            }
+
             this.setStatusInternal(callId, 'success', successResponse);
           })
           .catch((executionError: Error) => {
+            // Record failure with validator
+            this.executionValidator.recordFailure(
+              scheduledCall.request.name,
+              scheduledCall.request.args,
+              {
+                code: 'TOOL_EXECUTION_EXCEPTION',
+                category: 'execution',
+                requiredActions: ['Check tool parameters', 'Verify system state', 'Review error message'],
+                context: {
+                  errorMessage: executionError instanceof Error ? executionError.message : String(executionError)
+                }
+              }
+            );
+
             this.setStatusInternal(
               callId,
               'error',

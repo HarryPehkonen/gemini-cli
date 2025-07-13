@@ -207,6 +207,42 @@ export interface ToolResult {
    * For now, we keep it as the core logic in ReadFileTool currently produces it.
    */
   returnDisplay: ToolResultDisplay;
+
+  /**
+   * Indicates whether the tool execution was successful.
+   * When false, the LLM should treat this as a failure requiring attention.
+   */
+  success?: boolean;
+
+  /**
+   * Structured error information when success is false.
+   */
+  errorInfo?: ToolErrorInfo;
+}
+
+/**
+ * Structured error information for failed tool executions
+ */
+export interface ToolErrorInfo {
+  /**
+   * Structured error code for programmatic handling
+   */
+  code: string;
+
+  /**
+   * Category of error for grouping similar failures
+   */
+  category: 'validation' | 'execution' | 'permission' | 'not_found' | 'conflict';
+
+  /**
+   * Required actions that must be taken before retrying the tool
+   */
+  requiredActions: string[];
+
+  /**
+   * Additional context for error resolution
+   */
+  context?: Record<string, unknown>;
 }
 
 export type ToolResultDisplay = string | FileDiff;

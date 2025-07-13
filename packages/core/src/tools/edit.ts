@@ -14,6 +14,7 @@ import {
   ToolEditConfirmationDetails,
   ToolResult,
   ToolResultDisplay,
+  ToolErrorInfo,
 } from './tools.js';
 import { Type } from '@google/genai';
 import { SchemaValidator } from '../utils/schemaValidator.js';
@@ -56,11 +57,17 @@ export interface EditToolParams {
   modified_by_user?: boolean;
 }
 
+interface EditError {
+  display: string;
+  raw: string;
+  errorInfo?: ToolErrorInfo;
+}
+
 interface CalculatedEdit {
   currentContent: string | null;
   newContent: string;
   occurrences: number;
-  error?: { display: string; raw: string };
+  error?: EditError;
   isNewFile: boolean;
 }
 
@@ -200,7 +207,7 @@ Expectation for required parameters:
     let finalNewString = params.new_string;
     let finalOldString = params.old_string;
     let occurrences = 0;
-    let error: { display: string; raw: string } | undefined = undefined;
+    let error: EditError | undefined = undefined;
 
     try {
       currentContent = fs.readFileSync(params.file_path, 'utf8');
@@ -239,29 +246,121 @@ Expectation for required parameters:
 
       if (params.old_string === '') {
         // Error: Trying to create a file that already exists
+        const errorInfo: ToolErrorInfo = {
+          code: 'EDIT_FILE_EXISTS',
+          category: 'conflict',
+          requiredActions: [
+            'Use non-empty old_string to edit existing file',
+            'Or choose a different file path for new file creation'
+          ],
+          context: {
+            filePath: params.file_path,
+            attemptedAction: 'create_new_file'
+          }
+        };
+        
         error = {
-          display: `Failed to edit. Attempted to create a file that already exists.`,
-          raw: `File already exists, cannot create: ${params.file_path}`,
+          display: `EDIT TOOL FAILED: File already exists.`,
+          raw: `EDIT TOOL FAILED: File already exists.
+
+CRITICAL ERROR: Attempted to create a file that already exists.
+File: ${params.file_path}
+
+MANDATORY NEXT STEPS:
+- Use non-empty old_string to edit the existing file instead of creating a new one
+- Or use a different file path if you intended to create a new file
+
+DO NOT retry with empty old_string on an existing file.`,
+          errorInfo
         };
       } else if (occurrences === 0) {
+        const errorInfo: ToolErrorInfo = {
+          code: 'EDIT_TEXT_NOT_FOUND',
+          category: 'not_found',
+          requiredActions: [
+            `Use ${ReadFileTool.Name} tool to examine file content`,
+            'Copy exact text including whitespace and context',
+            'Retry with corrected old_string'
+          ],
+          context: {
+            filePath: params.file_path,
+            searchText: params.old_string,
+            occurrencesFound: 0,
+            expectedOccurrences: 1
+          }
+        };
+        
         error = {
-          display: `Failed to edit, could not find the string to replace.`,
-          raw: `Failed to edit, 0 occurrences found for old_string in ${params.file_path}. No edits made. The exact text in old_string was not found. Ensure you're not escaping content incorrectly and check whitespace, indentation, and context. Use ${ReadFileTool.Name} tool to verify.`,
+          display: `EDIT TOOL FAILED: Text not found in file.`,
+          raw: `EDIT TOOL FAILED: Text not found in file.
+
+CRITICAL ERROR: 0 occurrences found for old_string in ${params.file_path}. No edits made.
+
+MANDATORY NEXT STEPS:
+1. MUST use ${ReadFileTool.Name} tool to examine current file content
+2. Copy exact text including whitespace, indentation, and surrounding context
+3. Retry edit with corrected old_string
+
+COMMON ISSUES:
+- Whitespace/indentation mismatch
+- Text may have been modified by previous edits
+- Escaping issues in old_string
+
+DO NOT retry this edit without first using ${ReadFileTool.Name} to verify file content.`,
+          errorInfo
         };
       } else if (occurrences !== expectedReplacements) {
         const occurenceTerm =
           expectedReplacements === 1 ? 'occurrence' : 'occurrences';
 
+        const errorInfo: ToolErrorInfo = {
+          code: 'EDIT_MULTIPLE_MATCHES',
+          category: 'conflict',
+          requiredActions: [
+            `Set expected_replacements: ${occurrences} to replace all matches`,
+            `OR use ${ReadFileTool.Name} and provide more specific old_string context`
+          ],
+          context: {
+            filePath: params.file_path,
+            searchText: params.old_string,
+            occurrencesFound: occurrences,
+            expectedOccurrences: expectedReplacements
+          }
+        };
+        
         error = {
-          display: `Failed to edit, expected ${expectedReplacements} ${occurenceTerm} but found ${occurrences}.`,
-          raw: `Failed to edit, Expected ${expectedReplacements} ${occurenceTerm} but found ${occurrences} for old_string in file: ${params.file_path}`,
+          display: `EDIT TOOL FAILED: Multiple matches detected.`,
+          raw: `EDIT TOOL FAILED: Multiple matches detected.
+
+CRITICAL ERROR: Found ${occurrences} matches for old_string, expected ${expectedReplacements}.
+File: ${params.file_path}
+
+MANDATORY NEXT STEPS (choose one):
+A) Set expected_replacements: ${occurrences} to replace all ${occurrences} matches
+B) Use ${ReadFileTool.Name} tool first, then provide more specific old_string context to target only ${expectedReplacements} ${occurenceTerm}
+
+DO NOT retry this edit without addressing the multiple matches issue.`,
+          errorInfo
         };
       }
     } else {
       // Should not happen if fileExists and no exception was thrown, but defensively:
+      const errorInfo: ToolErrorInfo = {
+        code: 'EDIT_FILE_READ_ERROR',
+        category: 'execution',
+        requiredActions: [
+          'Check file permissions',
+          'Verify file exists and is readable'
+        ],
+        context: {
+          filePath: params.file_path
+        }
+      };
+      
       error = {
         display: `Failed to read content of file.`,
         raw: `Failed to read content of existing file: ${params.file_path}`,
+        errorInfo
       };
     }
 
@@ -373,6 +472,19 @@ Expectation for required parameters:
       return {
         llmContent: `Error: Invalid parameters provided. Reason: ${validationError}`,
         returnDisplay: `Error: ${validationError}`,
+        success: false,
+        errorInfo: {
+          code: 'EDIT_INVALID_PARAMETERS',
+          category: 'validation',
+          requiredActions: [
+            'Fix parameter validation errors',
+            'Ensure file_path is absolute',
+            'Verify all required parameters are provided'
+          ],
+          context: {
+            validationError
+          }
+        }
       };
     }
 
@@ -384,6 +496,20 @@ Expectation for required parameters:
       return {
         llmContent: `Error preparing edit: ${errorMsg}`,
         returnDisplay: `Error preparing edit: ${errorMsg}`,
+        success: false,
+        errorInfo: {
+          code: 'EDIT_PREPARATION_ERROR',
+          category: 'execution',
+          requiredActions: [
+            'Check if file is accessible',
+            'Verify file permissions',
+            'Ensure file system is available'
+          ],
+          context: {
+            filePath: params.file_path,
+            errorMessage: errorMsg
+          }
+        }
       };
     }
 
@@ -391,6 +517,8 @@ Expectation for required parameters:
       return {
         llmContent: editData.error.raw,
         returnDisplay: `Error: ${editData.error.display}`,
+        success: false,
+        errorInfo: editData.error.errorInfo,
       };
     }
 
@@ -430,12 +558,27 @@ Expectation for required parameters:
       return {
         llmContent: llmSuccessMessageParts.join(' '),
         returnDisplay: displayResult,
+        success: true,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       return {
         llmContent: `Error executing edit: ${errorMsg}`,
         returnDisplay: `Error writing file: ${errorMsg}`,
+        success: false,
+        errorInfo: {
+          code: 'EDIT_FILE_SYSTEM_ERROR',
+          category: 'execution',
+          requiredActions: [
+            'Check file permissions',
+            'Verify disk space availability',
+            'Ensure parent directory exists'
+          ],
+          context: {
+            filePath: params.file_path,
+            errorMessage: errorMsg
+          }
+        }
       };
     }
   }

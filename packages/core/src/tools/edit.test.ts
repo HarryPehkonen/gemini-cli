@@ -472,7 +472,7 @@ describe('EditTool', () => {
         /0 occurrences found for old_string in/,
       );
       expect(result.returnDisplay).toMatch(
-        /Failed to edit, could not find the string to replace./,
+        /EDIT TOOL FAILED: Text not found in file/,
       );
     });
 
@@ -486,10 +486,10 @@ describe('EditTool', () => {
       // The default mockEnsureCorrectEdit will return 2 occurrences for 'old'
       const result = await tool.execute(params, new AbortController().signal);
       expect(result.llmContent).toMatch(
-        /Expected 1 occurrence but found 2 for old_string in file/,
+        /EDIT TOOL FAILED: Multiple matches detected/,
       );
       expect(result.returnDisplay).toMatch(
-        /Failed to edit, expected 1 occurrence but found 2/,
+        /EDIT TOOL FAILED: Multiple matches detected/,
       );
     });
 
@@ -529,10 +529,10 @@ describe('EditTool', () => {
       };
       const result = await tool.execute(params, new AbortController().signal);
       expect(result.llmContent).toMatch(
-        /Expected 3 occurrences but found 2 for old_string in file/,
+        /EDIT TOOL FAILED: Multiple matches detected/,
       );
       expect(result.returnDisplay).toMatch(
-        /Failed to edit, expected 3 occurrences but found 2/,
+        /EDIT TOOL FAILED: Multiple matches detected/,
       );
     });
 
@@ -544,9 +544,9 @@ describe('EditTool', () => {
         new_string: 'new content',
       };
       const result = await tool.execute(params, new AbortController().signal);
-      expect(result.llmContent).toMatch(/File already exists, cannot create/);
+      expect(result.llmContent).toMatch(/EDIT TOOL FAILED: File already exists/);
       expect(result.returnDisplay).toMatch(
-        /Attempted to create a file that already exists/,
+        /EDIT TOOL FAILED: File already exists/,
       );
     });
 
