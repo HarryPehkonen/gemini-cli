@@ -34,6 +34,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run clean` - Clean build artifacts
 - `npm run preflight` - Complete build and test pipeline
 
+### Version Information
+- `gemini --version` - Show version number only
+- `gemini --build-info` - Show detailed build information with timestamp, git commit, platform
+- Build info automatically generated at build time by `scripts/generate-build-info.js`
+
 ## Architecture Overview
 
 The Gemini CLI is structured as a monorepo with two main packages:

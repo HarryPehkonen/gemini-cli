@@ -21,7 +21,7 @@ import {
 import { Settings } from './settings.js';
 
 import { Extension, filterActiveExtensions } from './extension.js';
-import { getCliVersion } from '../utils/version.js';
+import { getCliVersion, getVersionInfo, formatVersionInfo } from '../utils/version.js';
 import { loadSandboxConfig } from './sandboxConfig.js';
 
 // Simple console logger for now - replace with actual logger if available
@@ -54,6 +54,7 @@ export interface CliArgs {
   allowedMcpServerNames: string[] | undefined;
   extensions: string[] | undefined;
   listExtensions: boolean | undefined;
+  buildInfo: boolean | undefined;
 }
 
 export async function parseArguments(): Promise<CliArgs> {
@@ -174,6 +175,10 @@ export async function parseArguments(): Promise<CliArgs> {
       alias: 'l',
       type: 'boolean',
       description: 'List all available extensions and exit.',
+    })
+    .option('build-info', {
+      type: 'boolean',
+      description: 'Show detailed build information including timestamp and exit.',
     })
 
     .version(await getCliVersion()) // This will enable the --version flag based on package.json

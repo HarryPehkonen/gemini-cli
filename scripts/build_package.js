@@ -26,6 +26,13 @@ if (!process.cwd().includes('packages')) {
   process.exit(1);
 }
 
+// Generate build info before TypeScript compilation
+try {
+  execSync('node ../../scripts/generate-build-info.js', { stdio: 'inherit' });
+} catch (error) {
+  console.warn('Warning: Could not generate build info:', error.message);
+}
+
 // build typescript files
 execSync('tsc --build', { stdio: 'inherit' });
 

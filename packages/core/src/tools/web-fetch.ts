@@ -18,8 +18,8 @@ import { getResponseText } from '../utils/generateContentResponseUtilities.js';
 import { fetchWithTimeout, isPrivateIp } from '../utils/fetch.js';
 import { convert } from 'html-to-text';
 
-const URL_FETCH_TIMEOUT_MS = 10000;
-const MAX_CONTENT_LENGTH = 100000;
+const URL_FETCH_TIMEOUT_MS = 20000; // Increased for large files
+const MAX_CONTENT_LENGTH = 500000; // Increased for data files like emoji lists
 
 // Helper function to extract URLs from a string
 function extractUrls(text: string): string[] {
@@ -111,14 +111,24 @@ export class WebFetchTool extends BaseTool<WebFetchToolParams, ToolResult> {
           `Request failed with status code ${response.status} ${response.statusText}`,
         );
       }
-      const html = await response.text();
-      const textContent = convert(html, {
-        wordwrap: false,
-        selectors: [
-          { selector: 'a', options: { ignoreHref: true } },
-          { selector: 'img', format: 'skip' },
-        ],
-      }).substring(0, MAX_CONTENT_LENGTH);
+      
+      const contentType = response.headers.get('content-type') || '';
+      const rawContent = await response.text();
+      
+      let textContent: string;
+      if (contentType.includes('text/plain') || contentType.includes('text/csv') || contentType.includes('application/json')) {
+        // For plain text, CSV, or JSON files, use content as-is
+        textContent = rawContent.substring(0, MAX_CONTENT_LENGTH);
+      } else {
+        // For HTML or other content, convert from HTML to text
+        textContent = convert(rawContent, {
+          wordwrap: false,
+          selectors: [
+            { selector: 'a', options: { ignoreHref: true } },
+            { selector: 'img', format: 'skip' },
+          ],
+        }).substring(0, MAX_CONTENT_LENGTH);
+      }
 
       const geminiClient = this.config.getGeminiClient();
       const fallbackPrompt = `The user requested the following: "${params.prompt}".

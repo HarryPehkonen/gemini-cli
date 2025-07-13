@@ -26,7 +26,7 @@ import { getUserStartupWarnings } from './utils/userStartupWarnings.js';
 import { runNonInteractive } from './nonInteractiveCli.js';
 import { loadExtensions, Extension } from './config/extension.js';
 import { cleanupCheckpoints, registerCleanup } from './utils/cleanup.js';
-import { getCliVersion } from './utils/version.js';
+import { getCliVersion, getVersionInfo, formatVersionInfo } from './utils/version.js';
 import {
   ApprovalMode,
   Config,
@@ -103,6 +103,13 @@ export async function main() {
   }
 
   const argv = await parseArguments();
+  
+  // Handle --build-info flag
+  if (argv.buildInfo) {
+    const versionInfo = await getVersionInfo();
+    console.log(formatVersionInfo(versionInfo));
+    process.exit(0);
+  }
   const extensions = loadExtensions(workspaceRoot);
   const config = await loadCliConfig(
     settings.merged,
